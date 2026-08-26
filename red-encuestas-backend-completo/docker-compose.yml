@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: red_encuestas
+      POSTGRES_USER: red
+      POSTGRES_PASSWORD: cambia_esta_clave
+    ports:
+      - "5432:5432"
+    volumes:
+      - red_encuestas_db_data:/var/lib/postgresql/data
+
+volumes:
+  red_encuestas_db_data:
