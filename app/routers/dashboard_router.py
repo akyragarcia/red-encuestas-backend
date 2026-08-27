@@ -1,5 +1,5 @@
 from datetime import datetime
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 from app.database import get_session
 from app.deps import requiere_rol
@@ -70,3 +70,65 @@ def resumen(
         })
 
     return filas
+
+
+@router.get("/coordinador/{coordinador_id}")
+def detalle_coordinador(
+    coordinador_id: int,
+    usuario: Usuario = Depends(requiere_rol("supervisor", "admin")),
+    session: Session = Depends(get_session),
+):
+    """
+    Detalle de una brigada específica: fotos de inicio/cierre del turno de hoy, y por
+    cada brigadista, si ya mandó encuestas hoy (y cuántas) o sigue sin sincronizar.
+    Se recalcula cada vez que se pide -- así, si sincronizan más tarde, la próxima
+    vez que se consulte ya sale actualizado, sin que nadie tenga que avisar nada.
+    """
+    coord = session.get(Usuario, coordinador_id)
+    if not coord or coord.rol != "coordinador":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Coordinador no encontrado")
+    if usuario.rol == "supervisor" and coord.supervisor_id != usuario.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Ese coordinador no es tuyo")
+
+    hoy = datetime.utcnow().strftime("%Y-%m-%d")
+    turno_hoy = session.exec(
+        select(TurnoAsistencia).where(TurnoAsistencia.coordinador_id == coord.id, TurnoAsistencia.fecha == hoy)
+    ).first()
+
+    brigadistas = session.exec(select(Usuario).where(Usuario.coordinador_id == coord.id, Usuario.rol == "brigadista")).all()
+
+    estado_asistencia_por_id = {}
+    if turno_hoy:
+        for b in turno_hoy.brigadistas:
+            estado_asistencia_por_id[b["id"]] = {"estado": b["estado"], "hora_llegada": b["hora_llegada"]}
+
+    filas_brigadistas = []
+    for b in brigadistas:
+        encuestas = session.exec(select(Visita).where(Visita.brigadista_id == b.id, Visita.fecha == hoy)).all()
+        completas = sum(1 for v in encuestas if v.resultado == "completa")
+        parciales = sum(1 for v in encuestas if v.resultado == "parcial")
+        ultima = max((v.sincronizado_en for v in encuestas), default=None)
+        asistencia = estado_asistencia_por_id.get(b.id)
+        filas_brigadistas.append({
+            "id": b.id,
+            "nombre": b.nombre,
+            "estado_asistencia": asistencia["estado"] if asistencia else "sin_registro",
+            "hora_llegada": asistencia["hora_llegada"] if asistencia else None,
+            "encuestas_total": len(encuestas),
+            "encuestas_completas": completas,
+            "encuestas_parciales": parciales,
+            "sincronizado": len(encuestas) > 0,
+            "ultima_sincronizacion": ultima,
+        })
+
+    return {
+        "coordinador_id": coord.id,
+        "coordinador_nombre": coord.nombre,
+        "brigada_nombre": coord.brigada_nombre,
+        "turno_id": turno_hoy.id if turno_hoy else None,
+        "hora_inicio": turno_hoy.hora_inicio if turno_hoy else None,
+        "hora_cierre": turno_hoy.hora_cierre if turno_hoy else None,
+        "tiene_foto_inicio": bool(turno_hoy and turno_hoy.foto_inicio_path),
+        "tiene_foto_cierre": bool(turno_hoy and turno_hoy.foto_cierre_path),
+        "brigadistas": filas_brigadistas,
+    }
