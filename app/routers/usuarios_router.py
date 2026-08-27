@@ -19,6 +19,18 @@ class UsuarioCrear(BaseModel):
     brigada_nombre: str | None = None
 
 
+@router.get("/mis-brigadistas")
+def mis_brigadistas(
+    usuario: Usuario = Depends(requiere_rol("coordinador", "admin")),
+    session: Session = Depends(get_session),
+):
+    """El coordinador jala su lista fija de brigadistas asignados, para pasar lista en su tablet."""
+    brigadistas = session.exec(
+        select(Usuario).where(Usuario.coordinador_id == usuario.id, Usuario.rol == "brigadista", Usuario.activo == True)
+    ).all()
+    return [{"id": b.id, "nombre": b.nombre} for b in brigadistas]
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 def crear_usuario(
     datos: UsuarioCrear,
