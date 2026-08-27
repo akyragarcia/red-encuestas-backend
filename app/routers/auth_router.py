@@ -14,4 +14,4 @@ def login(datos: LoginRequest, session: Session = Depends(get_session)):
     if not usuario or not usuario.activo or not verificar_password(datos.password, usuario.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Código o contraseña incorrectos")
     token = crear_token(usuario.id, usuario.rol)
-    return TokenResponse(access_token=token, rol=usuario.rol, nombre=usuario.nombre)
+    return TokenResponse(access_token=token, rol=usuario.rol, nombre=usuario.nombre, brigada_nombre=usuario.brigada_nombre)
