@@ -1,18 +1,18 @@
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlmodel import Session
 from app.database import get_session
 from app.security import leer_token
 from app.models import Usuario
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+bearer_scheme = HTTPBearer()
 
 
 def usuario_actual(
-    token: str = Depends(oauth2_scheme),
+    credenciales: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     session: Session = Depends(get_session),
 ) -> Usuario:
-    payload = leer_token(token)
+    payload = leer_token(credenciales.credentials)
     if not payload:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token inválido o vencido")
     usuario = session.get(Usuario, int(payload["sub"]))
