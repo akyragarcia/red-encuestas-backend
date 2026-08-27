@@ -100,7 +100,40 @@ def listar_visitas(
     if solo_alertas:
         query = query.where(Visita.prioridad_alerta.is_not(None))
 
-    return session.exec(query.order_by(Visita.fecha_inicio.desc())).all()
+    visitas = session.exec(query.order_by(Visita.fecha_inicio.desc())).all()
+
+    # Se enriquece cada visita con el nombre del brigadista y de su brigada,
+    # para que el panel de supervisor/administrador no tenga que adivinar quién es quién.
+    resultado = []
+    cache_brigadistas: dict[int, Usuario] = {}
+    cache_coordinadores: dict[int, Usuario] = {}
+    for v in visitas:
+        brigadista = cache_brigadistas.setdefault(v.brigadista_id, session.get(Usuario, v.brigadista_id))
+        brigada_nombre = None
+        if brigadista and brigadista.coordinador_id:
+            coordinador = cache_coordinadores.setdefault(brigadista.coordinador_id, session.get(Usuario, brigadista.coordinador_id))
+            brigada_nombre = coordinador.brigada_nombre if coordinador else None
+        duracion_seg = None
+        if v.fecha_fin:
+            duracion_seg = int((v.fecha_fin - v.fecha_inicio).total_seconds())
+        resultado.append({
+            "id": v.id,
+            "brigadista_id": v.brigadista_id,
+            "brigadista_nombre": brigadista.nombre if brigadista else "Desconocido",
+            "brigada_nombre": brigada_nombre,
+            "lat": v.lat,
+            "lng": v.lng,
+            "fecha_inicio": v.fecha_inicio,
+            "fecha_fin": v.fecha_fin,
+            "duracion_seg": duracion_seg,
+            "resultado": v.resultado,
+            "subrazon": v.subrazon,
+            "respuestas": v.respuestas,
+            "tiene_audio": v.audio_path is not None,
+            "alertas": v.alertas,
+            "prioridad_alerta": v.prioridad_alerta,
+        })
+    return resultado
 
 
 @router.get("/{visita_id}/audio")
