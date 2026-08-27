@@ -1,12 +1,14 @@
 import json
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
+from fastapi.responses import FileResponse
+from sqlalchemy.orm.attributes import flag_modified
 from sqlmodel import Session, select
 from app.database import get_session
 from app.deps import usuario_actual, requiere_rol
 from app.models import Usuario, TurnoAsistencia
 from app.schemas import TurnoCrearEntrada, TurnoLlegadaEntrada, TurnoCerrarEntrada
-from app.storage import guardar_archivo
+from app.storage import guardar_archivo, ruta_absoluta
 
 router = APIRouter(prefix="/turnos", tags=["turnos"])
 
@@ -75,6 +77,7 @@ def marcar_llegada(
                 b["foto_tarde_path"] = foto_path
                 b["motivo_tarde"] = entrada.motivo_tarde
     turno.brigadistas = brigadistas
+    flag_modified(turno, "brigadistas")
     session.add(turno)
     session.commit()
     return {"ok": True}
@@ -122,3 +125,43 @@ def listar_turnos(
     if fecha:
         query = query.where(TurnoAsistencia.fecha == fecha)
     return session.exec(query.order_by(TurnoAsistencia.hora_inicio.desc())).all()
+
+
+@router.get("/{turno_id}/foto-inicio")
+def ver_foto_inicio(
+    turno_id: str,
+    usuario: Usuario = Depends(requiere_rol("admin", "supervisor")),
+    session: Session = Depends(get_session),
+):
+    turno = session.get(TurnoAsistencia, turno_id)
+    if not turno or not turno.foto_inicio_path:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No hay foto de inicio para este turno")
+    return FileResponse(ruta_absoluta(turno.foto_inicio_path), media_type="image/jpeg")
+
+
+@router.get("/{turno_id}/foto-cierre")
+def ver_foto_cierre(
+    turno_id: str,
+    usuario: Usuario = Depends(requiere_rol("admin", "supervisor")),
+    session: Session = Depends(get_session),
+):
+    turno = session.get(TurnoAsistencia, turno_id)
+    if not turno or not turno.foto_cierre_path:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No hay foto de cierre para este turno")
+    return FileResponse(ruta_absoluta(turno.foto_cierre_path), media_type="image/jpeg")
+
+
+@router.get("/{turno_id}/foto-tarde/{brigadista_id}")
+def ver_foto_tarde(
+    turno_id: str,
+    brigadista_id: int,
+    usuario: Usuario = Depends(requiere_rol("admin", "supervisor")),
+    session: Session = Depends(get_session),
+):
+    turno = session.get(TurnoAsistencia, turno_id)
+    if not turno:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Turno no encontrado")
+    brigadista = next((b for b in turno.brigadistas if b["id"] == brigadista_id), None)
+    if not brigadista or not brigadista.get("foto_tarde_path"):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No hay foto de retraso para este brigadista")
+    return FileResponse(ruta_absoluta(brigadista["foto_tarde_path"]), media_type="image/jpeg")
