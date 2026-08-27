@@ -13,6 +13,7 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     rol: str
     nombre: str
+    brigada_nombre: Optional[str] = None
 
 
 class VisitaEntrada(BaseModel):
