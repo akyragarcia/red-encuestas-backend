@@ -30,6 +30,12 @@ def distancia_metros(lat1, lng1, lat2, lng2) -> float:
     return 2 * R * math.asin(math.sqrt(a))
 
 
+def _sin_zona_horaria(dt):
+    """Quita la información de zona horaria si la trae, para poder comparar fechas
+    sin importar si vienen de la base de datos (naive) o recién parseadas del JSON (aware)."""
+    return dt.replace(tzinfo=None) if dt.tzinfo is not None else dt
+
+
 def calcular_alertas(visita: Visita, brigadista: Usuario, visita_anterior: Visita | None) -> tuple[list[str], str | None]:
     alertas: list[str] = []
     prioridad_max = None
@@ -44,7 +50,7 @@ def calcular_alertas(visita: Visita, brigadista: Usuario, visita_anterior: Visit
 
     # --- Duración mínima (solo aplica a encuestas completas) ---
     if visita.resultado == "completa" and visita.fecha_fin:
-        duracion_seg = (visita.fecha_fin - visita.fecha_inicio).total_seconds()
+        duracion_seg = (_sin_zona_horaria(visita.fecha_fin) - _sin_zona_horaria(visita.fecha_inicio)).total_seconds()
         if duracion_seg < settings.duracion_minima_alta_prioridad_seg:
             marcar("duracion_corta", "alta")
         elif duracion_seg < settings.duracion_minima_alerta_seg:
@@ -60,9 +66,11 @@ def calcular_alertas(visita: Visita, brigadista: Usuario, visita_anterior: Visit
 
     # --- Hueco de inactividad respecto a la visita anterior del mismo brigadista ---
     if visita_anterior and visita_anterior.fecha_fin:
-        gap_min = (visita.fecha_inicio - visita_anterior.fecha_fin).total_seconds() / 60
+        inicio_actual = _sin_zona_horaria(visita.fecha_inicio)
+        fin_anterior = _sin_zona_horaria(visita_anterior.fecha_fin)
+        gap_min = (inicio_actual - fin_anterior).total_seconds() / 60
         if gap_min > settings.hueco_inactividad_min:
-            hora_gap_inicio = visita_anterior.fecha_fin.time()
+            hora_gap_inicio = fin_anterior.time()
             en_horario_comida = HORA_COMIDA_INICIO <= hora_gap_inicio <= HORA_COMIDA_FIN
             if not en_horario_comida:
                 marcar("hueco_inactividad", "media")
