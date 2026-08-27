@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import crear_tablas
-from app.routers import auth_router, visitas_router, turnos_router, usuarios_router
+from app.routers import auth_router, visitas_router, turnos_router, usuarios_router, dashboard_router
 
 app = FastAPI(title="RED Encuestas — API")
 
@@ -29,3 +29,4 @@ app.include_router(auth_router.router)
 app.include_router(visitas_router.router)
 app.include_router(turnos_router.router)
 app.include_router(usuarios_router.router)
+app.include_router(dashboard_router.router)
