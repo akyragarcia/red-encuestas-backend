@@ -3,6 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from fastapi.responses import FileResponse
 from sqlmodel import Session, select
+from sqlalchemy import text
 from app.database import get_session
 from app.deps import usuario_actual, requiere_rol
 from app.models import Usuario, Visita
@@ -11,6 +12,23 @@ from app.storage import guardar_archivo, ruta_absoluta
 from app.alertas import calcular_alertas
 
 router = APIRouter(prefix="/visitas", tags=["visitas"])
+
+
+def _calcular_seccion(session: Session, lat: float | None, lng: float | None) -> int | None:
+    """Busca en qué sección electoral cae este punto, usando la tabla `seccion`
+    (importada una vez desde el shapefile con importar_secciones.py). Si esa tabla
+    todavía no existe o no hay coordenadas, regresa None sin tronar -- el resto del
+    sistema sigue funcionando igual, solo sin ese dato."""
+    if lat is None or lng is None:
+        return None
+    try:
+        fila = session.exec(
+            text("SELECT seccion FROM seccion WHERE ST_Contains(geom, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)) LIMIT 1"),
+            params={"lng": lng, "lat": lat},
+        ).first()
+        return fila[0] if fila else None
+    except Exception:
+        return None
 
 
 def _brigadistas_bajo_supervisor(session: Session, supervisor_id: int) -> list[int]:
@@ -60,6 +78,7 @@ def recibir_visita(
         ultima_pregunta_id=entrada.ultima_pregunta_id,
         audio_path=audio_path,
         audio_duracion_seg=entrada.audio_duracion_seg,
+        seccion=_calcular_seccion(session, entrada.lat, entrada.lng),
     )
 
     visita_anterior = session.exec(
@@ -132,6 +151,7 @@ def listar_visitas(
             "tiene_audio": v.audio_path is not None,
             "alertas": v.alertas,
             "prioridad_alerta": v.prioridad_alerta,
+            "seccion": v.seccion,
         })
     return resultado
 
