@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Optional
 from sqlalchemy import Column, JSON
 from sqlmodel import SQLModel, Field
+from geoalchemy2 import Geometry
 
 # Roles válidos: "brigadista", "coordinador", "supervisor", "admin"
 
@@ -50,6 +51,11 @@ class Visita(SQLModel, table=True):
     audio_path: Optional[str] = None
     audio_duracion_seg: Optional[int] = None
 
+    # A qué sección electoral cae esta encuesta, calculado automáticamente al recibirla
+    # (cruzando su lat/lng contra el shapefile de secciones ya importado). Si es None,
+    # es porque no había GPS válido o la sección todavía no estaba importada.
+    seccion: Optional[int] = None
+
     # Lista de códigos de alerta disparados por las reglas anti-simulación, ej. ["duracion_corta", "fuera_zona"]
     alertas: list = Field(default_factory=list, sa_column=Column(JSON))
     prioridad_alerta: Optional[str] = None  # "alta" | "media" | None
@@ -73,3 +79,16 @@ class TurnoAsistencia(SQLModel, table=True):
     brigadistas: list = Field(default_factory=list, sa_column=Column(JSON))
 
     sincronizado_en: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Seccion(SQLModel, table=True):
+    """
+    Secciones electorales importadas UNA VEZ desde el shapefile oficial (capa SECCION
+    del INE) con el script importar_secciones.py. Esta tabla casi nunca cambia -- solo
+    se vuelve a importar si el INE actualiza los límites de sección.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    seccion: int = Field(index=True)
+    municipio: int
+    distrito_local: int
+    geom: str = Field(sa_column=Column(Geometry(geometry_type="MULTIPOLYGON", srid=4326)))
